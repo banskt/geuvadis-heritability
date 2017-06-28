@@ -1,8 +1,3 @@
-# R script for stratifying SNPs by segment-based LD scores
-# http://www.nature.com/ng/journal/v47/n10/full/ng.3390.html
-# http://gcta.freeforums.net/thread/199/negligible-missing-yang-2015-1114
-# http://gcta.freeforums.net/thread/194/gcta-ldms-estimating-heritability-data
-
 options <- commandArgs(trailingOnly = TRUE)
 lds_seg = read.table(options[1],header=T,colClasses=c("character",rep("numeric",8)))
 quartiles=summary(lds_seg$ldscore_region)

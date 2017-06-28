@@ -48,7 +48,6 @@ cd ${WORKDIR}
 
 if [[ $MCASE == 1 ]]; then
     ${GCTA} --bfile ${BFILE} --autosome --maf 0.01 --make-grm --out ${GRMFILE} --thread-num 16
-    ${GCTA} --grm ${GRMFILE}  --pca ${NPCA}  --out ${PCFILE}
 fi
 
 if [[ $MCASE == 2 ]]; then
@@ -62,9 +61,9 @@ if [[ $MCASE == 2 ]]; then
     echo "ldgroup02" >> ${GRMFILE}
     echo "ldgroup03" >> ${GRMFILE}
     echo "ldgroup04" >> ${GRMFILE}
-
-    ${GCTA} --grm ${GRMFILE}  --pca ${NPCA}  --out ${PCFILE}
 fi
+   
+${GCTA} ${OPTION} ${GRMFILE}  --pca ${NPCA}  --out ${PCFILE}
 
 if [[ ! -d $OUTDIR ]]; then
     mkdir ${OUTDIR}
@@ -90,8 +89,8 @@ for file in `ls geneid_*`;do
          17s|_grmfile|${GRMFILE}|;
          18s|_ngene|${NGENE}|;
          20s|_gcta_source|${GCTA}|;
-         34,35s|--option|${OPTION}|;" ${CWD}/greml.bsub > ${file}.bsub
-    #bsub < ${file}.bsub
+         33,34s|--option|${OPTION}|;" ${CWD}/greml.bsub > ${file}.bsub
+    bsub < ${file}.bsub
 done
 
 cd ${CWD}
