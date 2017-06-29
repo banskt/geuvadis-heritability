@@ -1,7 +1,7 @@
 #!/bin/bash
 
-BASEDIR="/usr/users/sbanerj/gwas-eQTL/geuvadis-heritability"
-DATADIR="${BASEDIR}/geuvadis-heritability/data"
+BASEDIR="/usr/users/sbanerj/gwas-eQTL/gEUVADIS_heritability"
+DATADIR="${BASEDIR}/gEUVADIS_data"
 
 PREFIX="greml-ldms"
 NPCA=20
@@ -18,6 +18,7 @@ PCFILE="${WORKDIR}/${PREFIX}_${NPCA}pc"
 OUTDIR="${WORKDIR}/reml_res"
 ONCDIR="${WORKDIR}/reml_noconstraint_res"
 GRMFILE="${WORKDIR}/${PREFIX}"
+OUTPREFIX="${WORKDIR}/${PREFIX}_${NPCA}pc"
 
 #===================== Be careful before changing things below =======================#
 
@@ -94,3 +95,12 @@ for file in `ls geneid_*`;do
 done
 
 cd ${CWD}
+
+# ============ Create the post processing file =======================
+echo "Creating post-processing file"
+sed "3s|_infile|${GENEIDFILE}|;
+     4s|_outdir|${OUTDIR}|;
+     5s|_oncdir|${ONCDIR}|;
+     6s|_hprefix|${OUTPREFIX}|;" post_process.sh > post_process_${PREFIX}.sh
+
+chmod +x post_process_${PREFIX}.sh
