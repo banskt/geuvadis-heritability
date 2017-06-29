@@ -1,7 +1,7 @@
 # Calculation of heritability from GEUVADIS dataset
 ## 1. Download
 Scripts for downloading and pre-processing the data are given in `data` directory. The following commands need to be run:
-```
+```bash
 ./step01_download_files.sh
 Rscript step02_get_EUR_samples.R
 Rscript step03_get_target_snps.R
@@ -14,7 +14,7 @@ About 60GB of data will be downloaded.
 
 ## 2. Analysis
 Within `script/gcta_pipeline` modify `run_greml.sh`, and run:
-```
+```bash
 ./run_greml.sh
 ```
 
@@ -31,7 +31,7 @@ The intermediate results are put in two directories: `reml_res` and `reml_nocons
 The above step will create a post-processing script called `post_process_greml.sh` or `post_process_greml-ldms.sh` depending on the option used.
 Run the corresponding post-processing script to read heritability results from all output files produced in `reml_res` or `reml_noconstraint_res`
 and put them in a single file.
-```
+```bash
 ./post_process_greml.sh
 ./post_process_greml-ldms.sh
 ```

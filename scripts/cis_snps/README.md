@@ -1,20 +1,21 @@
 # Calculation of heritability using only cis SNPs
-## 1. Download
-Scripts for downloading and pre-processing the data are given in `data` directory. The following commands need to be run:
+## 1. Data
+For data download and pre-processing, see the `genome_wide` analysis.
+Here, we performed the following steps to get the starting data:
+1) Use `PLINK` to split the combined bed, bim and fam files to separate chromosomes.
+2) Copy 2 files from the `genome_wide` pre-processing:
+    a) `GEUVADIS_EUR_expression.geneids`
+    b) `GEUVADIS_EUR_expression.txt`
+3) Download `gencode.v12.annotation.gtf.gz` from [here](ftp://ftp.sanger.ac.uk/pub/gencode/Gencode_human/release_12/gencode.v12.annotation.gtf.gz). 
+Unzip using:
+```bash
+gunzip -d gencode.v12.annotation.gtf.gz
 ```
-./step01_download_files.sh
-Rscript step02_get_EUR_samples.R
-Rscript step03_get_target_snps.R
-./step04_format_genotype1.sh
-./step05_get_EUR_gene_expression.sh
-```
-Note that this will download the data withing the same directory where the commands are being run.
-About 60GB of data will be downloaded.
-
+Note that this file is also required in the results folder for plotting.
 
 ## 2. Analysis
 Within `script/cis_snps` modify `run_greml.sh`, and run it in bash:
-```
+```bash
 ./run_greml.sh
 ```
 The directories need to be set properly in the script.
@@ -30,6 +31,6 @@ This will run the jobs in `BSUB` queue and produce intermediate results in the w
 ## 3. Post process
 The above step will also modify the post-processing script inplace.
 It reads heritability results from all output files and put them in 4 corresponding files for the 4 options used.
-```
+```bash
 ./post_process.sh
 ```
