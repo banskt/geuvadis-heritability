@@ -1,0 +1,148 @@
+#!/bin/sh
+#BSUB -J _JOBNAME
+#BSUB -q mpi
+#BSUB -W 48:00
+#BSUB -n 4
+#BSUB -R span[hosts=1]
+#BSUB -o _JOBNAME.o%J
+#BSUB -e _JOBNAME.e%J
+#BSUB -a openmp
+
+
+module load R/3.4.0
+
+NCORE=4
+LDMS="true"
+NPCA=10
+
+WORKDIR="_workdir"
+CODEDIR="_codedir"
+SCRATCH="_scratch"
+DATADIR="_datadir"
+GTFFILE="_gtffile"
+GEXFILE="_gxfile_"
+GIDFILE="_gidfile"
+PLINKFILE="_plkfile"
+NGENE="_numgene"
+PEERCOV="_peercov"
+
+GENDERCOV="${DATADIR}/sample_gender.txt"
+PLATFORMCOV="${DATADIR}/sample_gplat.txt"
+
+PLINK="${HOME}/packages/plink/plink-1.90/plink"
+GCTA="${HOME}/packages/gcta/gcta-1.26/gcta64"
+RSTRATIFY="${CODEDIR}/stratify_snps.R"
+COMBINE_COV="${CODEDIR}/combine_covariates.py"
+
+source ${HOME}/miniconda3/envs/py35/bin/activate py35
+
+
+# ============== Be careful before changing below ===================
+
+# Serial loop over NGENE genes read from the corresponding gene-id file
+
+SUFFIX=`basename ${GIDFILE} | cut -d'_' -f2`;
+NPHENO=$(( 10#$SUFFIX * 10#$NGENE ))  
+# This is because constants with leading 0 are interpreted as octal numbers in bash
+# for details see: https://stackoverflow.com/questions/10515407
+# https://www.gnu.org/software/bash/manual/bashref.html#Shell-Arithmetic
+
+while read GENE; do
+
+    NPHENO=$((NPHENO+1))
+
+    # Define the tmp files (will be deleted later)
+    TMPGENO="${SCRATCH}/_${GENE}_1e6window_genotype"
+    TMPGRM="${SCRATCH}/_${GENE}_grm"
+    TMPGRM_MULTI_LIST="${SCRATCH}/_${GENE}_multi_grm.list"
+    TMPGRM_MULTI_LD="${SCRATCH}/_${GENE}_strat"
+    TMPGRM_MULTI_SNPS="${SCRATCH}/_${GENE}_snp_group"
+    TMPGRM_MULTI_GRMS="${SCRATCH}/_${GENE}_grm"
+    TMPPCA="${SCRATCH}/_${GENE}_pc"
+    TMPPCA_MULTI="${SCRATCH}/_${GENE}_multi_pc"
+    TMPCOV="${SCRATCH}/_${GENE}_pc.combined_covariates.txt"
+    
+    # Define the output directories
+    OUTDIR="${WORKDIR}/greml"
+    OUTDIR_NOC="${WORKDIR}/greml_noconstraint"
+    OUTDIR_LDMS="${WORKDIR}/greml-ldms"
+    OUTDIR_LDMS_NOC="${WORKDIR}/greml-ldms_noconstraint"
+    
+    # Create the working directory and other required output directories,
+    # where intermediate results will be stored. 
+    # Should be outside the BSUB script later
+    
+    for dir in ${OUTDIR} ${OUTDIR_NOC} ${OUTDIR_LDMS} ${OUTDIR_LDMS_NOC}; do
+        if [[ ! -d $dir ]]; then
+            mkdir -p $dir
+        fi
+    done
+    
+    #cd ${WORKDIR}
+    
+    # Get the chromosome, start BP and end BP
+    INFO=`grep $GENE $GTFFILE | awk -F$'\t' '$3 == "gene" {print $1, $4, $5}'`
+    CHROM=`echo ${INFO} | awk '{print $1}'`
+    CHROM=${CHROM:3}
+    START=`echo ${INFO} | awk '{m = $2 - 1000000;} {if (m < 0) {print 0} else {print m}}'`
+    END=`echo ${INFO} | awk '{m = $3 + 1000000; print m}'`
+    
+    # Extract the genotype in the scratch directory using PLINK
+    CHRFILE=${PLINKFILE//_insertnum_/${CHROM}}
+    sleep 1
+    ${PLINK} --bfile ${CHRFILE} --chr ${CHROM} --from-bp ${START} --to-bp ${END} --make-bed --out ${TMPGENO}
+    
+    # Calculate the genetic relationship matrix
+    ${GCTA} --bfile ${TMPGENO} --autosome --maf 0.01 --make-grm --out ${TMPGRM} --thread-num ${NCORE}
+    
+    if [[ "$LDMS" == "true" ]]; then
+        ${GCTA} --bfile ${TMPGENO} --ld-score-region 200 --out ${TMPGRM_MULTI_LD} --thread-num ${NCORE}
+        Rscript ${RSTRATIFY} ${TMPGRM_MULTI_LD}.score.ld ${TMPGRM_MULTI_SNPS}
+        ${GCTA} --bfile ${TMPGENO} --extract "${TMPGRM_MULTI_SNPS}1.txt" --autosome --maf 0.01 --make-grm --out "${TMPGRM_MULTI_GRMS}01" --thread-num ${NCORE}
+        ${GCTA} --bfile ${TMPGENO} --extract "${TMPGRM_MULTI_SNPS}2.txt" --autosome --maf 0.01 --make-grm --out "${TMPGRM_MULTI_GRMS}02" --thread-num ${NCORE}
+        ${GCTA} --bfile ${TMPGENO} --extract "${TMPGRM_MULTI_SNPS}3.txt" --autosome --maf 0.01 --make-grm --out "${TMPGRM_MULTI_GRMS}03" --thread-num ${NCORE}
+        ${GCTA} --bfile ${TMPGENO} --extract "${TMPGRM_MULTI_SNPS}4.txt" --autosome --maf 0.01 --make-grm --out "${TMPGRM_MULTI_GRMS}04" --thread-num ${NCORE}
+        echo "${TMPGRM_MULTI_GRMS}01" >> ${TMPGRM_MULTI_LIST}
+        echo "${TMPGRM_MULTI_GRMS}02" >> ${TMPGRM_MULTI_LIST}
+        echo "${TMPGRM_MULTI_GRMS}03" >> ${TMPGRM_MULTI_LIST}
+        echo "${TMPGRM_MULTI_GRMS}04" >> ${TMPGRM_MULTI_LIST}
+    fi
+    
+    # Calculate the PCA and do the GREML analysis 
+    
+    # 1. Constrained and unconstrained GREML
+    ${GCTA} --grm ${TMPGRM}  --pca ${NPCA}  --out ${TMPPCA}
+    python ${COMBINE_COV} ${TMPPCA}.eigenvec ${PEERCOV} ${TMPCOV} --add_covariates ${GENDERCOV} ${PLATFORMCOV}
+    
+    OUTFILE="${OUTDIR}/${GENE}"
+    ${GCTA} --reml --grm  ${TMPGRM} --pheno ${GEXFILE} --qcovar ${TMPCOV} --mpheno ${NPHENO} --out ${OUTFILE} --thread-num ${NCORE}
+    
+    OUTFILE="${OUTDIR_NOC}/${GENE}"
+    ${GCTA} --reml --grm  ${TMPGRM} --pheno ${GEXFILE} --qcovar ${TMPCOV} --mpheno ${NPHENO} --out ${OUTFILE} --thread-num ${NCORE} --reml-no-constrain
+    
+    # 2. GREML-LDMS
+    if [[ "$LDMS" == "true" ]]; then
+        ${GCTA} --mgrm ${TMPGRM_MULTI_LIST}  --pca ${NPCA}  --out ${TMPPCA_MULTI}
+        python ${COMBINE_COV} ${TMPPCA_MULTI}.eigenvec ${PEERCOV} ${TMPCOV} --add_covariates ${GENDERCOV} ${PLATFORMCOV}
+        
+        OUTFILE="${OUTDIR_LDMS}/${GENE}"
+        ${GCTA} --reml --mgrm  ${TMPGRM_MULTI_LIST} --pheno ${GEXFILE} --qcovar ${TMPCOV} --mpheno ${NPHENO} --out ${OUTFILE} --thread-num ${NCORE}
+    
+        OUTFILE="${OUTDIR_LDMS_NOC}/${GENE}"
+        ${GCTA} --reml --mgrm  ${TMPGRM_MULTI_LIST} --pheno ${GEXFILE} --qcovar ${TMPCOV} --mpheno ${NPHENO} --out ${OUTFILE} --thread-num ${NCORE} --reml-no-constrain
+    fi
+    
+    # Clean up the temporary file
+    rm -rf "${TMPGENO}.bed" "${TMPGENO}.bim" "${TMPGENO}.fam" "${TMPGENO}.log" "${TMPGENO}.nosex"
+    rm -rf "${TMPGRM}.grm.bin" "${TMPGRM}.grm.id" "${TMPGRM}.grm.N.bin"
+    rm -rf "${TMPGRM_MULTI_LIST}"
+    rm -rf "${TMPGRM_MULTI_LD}.score.ld"
+    rm -rf "${TMPGRM_MULTI_SNPS}1.txt" "${TMPGRM_MULTI_SNPS}2.txt" "${TMPGRM_MULTI_SNPS}3.txt" "${TMPGRM_MULTI_SNPS}4.txt"
+    rm -rf "${TMPGRM_MULTI_GRMS}01.grm.bin" "${TMPGRM_MULTI_GRMS}01.grm.id" "${TMPGRM_MULTI_GRMS}01.grm.N.bin"
+    rm -rf "${TMPGRM_MULTI_GRMS}02.grm.bin" "${TMPGRM_MULTI_GRMS}02.grm.id" "${TMPGRM_MULTI_GRMS}02.grm.N.bin"
+    rm -rf "${TMPGRM_MULTI_GRMS}03.grm.bin" "${TMPGRM_MULTI_GRMS}03.grm.id" "${TMPGRM_MULTI_GRMS}03.grm.N.bin"
+    rm -rf "${TMPGRM_MULTI_GRMS}04.grm.bin" "${TMPGRM_MULTI_GRMS}04.grm.id" "${TMPGRM_MULTI_GRMS}04.grm.N.bin"
+    rm -rf "${TMPPCA}.eigenvec" "${TMPPCA}.eigenval" "${TMPPCA_MULTI}.eigenvec" "${TMPPCA_MULTI}.eigenval"
+    rm -rf "${TMPCOV}"
+
+done < ${GIDFILE}
